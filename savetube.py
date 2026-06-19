@@ -233,8 +233,10 @@ class SaveTube:
         self.root.after(0, self._finish, done, len(pending))
 
     def _download_one(self, item: dict, folder: str, quality: str) -> bool:
-        out_tmpl = os.path.join(folder, "%(title)s.%(ext)s")
-        cmd = ["yt-dlp", "--newline", "-o", out_tmpl]
+        # [id] guarantees a unique ASCII name even if the title strips to
+        # nothing; --restrict-filenames keeps names ASCII-only / no specials.
+        out_tmpl = os.path.join(folder, "%(title)s_[%(id)s].%(ext)s")
+        cmd = ["yt-dlp", "--newline", "--restrict-filenames", "-o", out_tmpl]
         if quality == "audio":
             cmd += ["-x", "--audio-format", "mp3"]
         else:
