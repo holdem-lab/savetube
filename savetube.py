@@ -10,8 +10,11 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from collections import deque
 from pathlib import Path
+
+STALL_TIMEOUT = 300  # kill yt-dlp if it emits nothing for this many seconds
 
 # GUI apps launched from Finder inherit a minimal PATH without Homebrew, so
 # yt-dlp/ffmpeg (in /opt/homebrew/bin or /usr/local/bin) would be invisible.
@@ -276,7 +279,9 @@ class SaveTube:
         else:
             cmd += ["-f", "bv*+ba/b", "-S", "vcodec:h264,ext:mp4:m4a",
                     "--merge-output-format", "mp4"]
-        cmd.append(item["url"])
+        # "--" stops option parsing: a URL starting with "-" can't be treated
+        # as a yt-dlp flag (e.g. --exec → arbitrary command execution).
+        cmd += ["--", item["url"]]
 
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
@@ -286,8 +291,21 @@ class SaveTube:
                             "yt-dlp не найден. Переустанови (см. README).")
             return False
 
+        # Watchdog: if yt-dlp goes silent for STALL_TIMEOUT, it's stuck — kill
+        # it so the queue can't hang forever on one dead download.
+        last_output = [time.monotonic()]
+
+        def watchdog():
+            while proc.poll() is None:
+                if time.monotonic() - last_output[0] > STALL_TIMEOUT:
+                    proc.kill()
+                    return
+                time.sleep(5)
+        threading.Thread(target=watchdog, daemon=True).start()
+
         tail = deque(maxlen=25)  # keep last lines to explain a failure
         for line in proc.stdout:  # live progress from yt-dlp
+            last_output[0] = time.monotonic()
             tail.append(line.rstrip())
             m = PROGRESS_RE.search(line)
             if m:
