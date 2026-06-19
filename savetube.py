@@ -270,10 +270,10 @@ class SaveTube:
         elif height:  # cap to chosen resolution, fall back if not available
             fmt = (f"bv*[height<={height}]+ba/b[height<={height}]/"
                    f"bv*+ba/b")
-            cmd += ["-f", fmt, "-S", "ext:mp4:m4a",
+            cmd += ["-f", fmt, "-S", "vcodec:h264,ext:mp4:m4a",
                     "--merge-output-format", "mp4"]
         else:
-            cmd += ["-f", "bv*+ba/b", "-S", "ext:mp4:m4a",
+            cmd += ["-f", "bv*+ba/b", "-S", "vcodec:h264,ext:mp4:m4a",
                     "--merge-output-format", "mp4"]
         cmd.append(item["url"])
 
