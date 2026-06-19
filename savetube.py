@@ -13,6 +13,8 @@ from collections import deque
 from pathlib import Path
 
 ERROR_LOG = Path.home() / ".savetube" / "last_error.log"
+# Max video height per label; None = best available.
+RES_MAP = {"Лучшее": None, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -106,6 +108,11 @@ class SaveTube:
                         variable=self.quality).pack(side="left", padx=(6, 0))
         ttk.Radiobutton(frame, text="Звук mp3", value="audio",
                         variable=self.quality).pack(side="left", padx=(6, 0))
+
+        ttk.Label(frame, text="Качество:").pack(side="left", padx=(14, 0))
+        self.res = tk.StringVar(value="Лучшее")
+        ttk.Combobox(frame, textvariable=self.res, width=8, state="readonly",
+                     values=list(RES_MAP)).pack(side="left", padx=(6, 0))
 
         default_dir = self.cfg.get("folder", str(Path.home() / "Downloads"))
         self.folder = tk.StringVar(value=default_dir)
@@ -216,13 +223,14 @@ class SaveTube:
     def _run_queue(self, pending: list[dict]) -> None:
         folder = self.folder.get()
         quality = self.quality.get()
+        height = RES_MAP.get(self.res.get())
         done = 0
         for item in pending:
             item["status"] = "downloading"
             self.root.after(0, self._set_status, item, "⬇ качаю…")
             self.root.after(0, self.status_var.set,
                             f"Качаю {done + 1}/{len(pending)}…")
-            ok = self._download_one(item, folder, quality)
+            ok = self._download_one(item, folder, quality, height)
             if ok:
                 item["status"] = "done"
                 self.root.after(0, self._set_status, item, "✅ готово")
@@ -232,13 +240,19 @@ class SaveTube:
                 self.root.after(0, self._set_status, item, "❌ ошибка · 2× клик")
         self.root.after(0, self._finish, done, len(pending))
 
-    def _download_one(self, item: dict, folder: str, quality: str) -> bool:
+    def _download_one(self, item: dict, folder: str, quality: str,
+                      height: int | None = None) -> bool:
         # [id] guarantees a unique ASCII name even if the title strips to
         # nothing; --restrict-filenames keeps names ASCII-only / no specials.
         out_tmpl = os.path.join(folder, "%(title)s_[%(id)s].%(ext)s")
         cmd = ["yt-dlp", "--newline", "--restrict-filenames", "-o", out_tmpl]
         if quality == "audio":
             cmd += ["-x", "--audio-format", "mp3"]
+        elif height:  # cap to chosen resolution, fall back if not available
+            fmt = (f"bv*[height<={height}]+ba/b[height<={height}]/"
+                   f"bv*+ba/b")
+            cmd += ["-f", fmt, "-S", "ext:mp4:m4a",
+                    "--merge-output-format", "mp4"]
         else:
             cmd += ["-f", "bv*+ba/b", "-S", "ext:mp4:m4a",
                     "--merge-output-format", "mp4"]
