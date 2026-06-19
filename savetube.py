@@ -9,7 +9,10 @@ import os
 import re
 import subprocess
 import threading
+from collections import deque
 from pathlib import Path
+
+ERROR_LOG = Path.home() / ".savetube" / "last_error.log"
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -98,6 +101,8 @@ class SaveTube:
         sb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         sb.pack(side="right", fill="y", pady=8)
         self.tree.configure(yscrollcommand=sb.set)
+        # Double-click a failed row to read why it failed.
+        self.tree.bind("<Double-1>", self.show_error)
 
     def _build_controls(self) -> None:
         frame = ttk.Frame(self.root)
@@ -153,6 +158,12 @@ class SaveTube:
         # UI updates must run on the main thread (called via root.after).
         self.tree.set(item["iid"], "status", label)
 
+    def show_error(self, event) -> None:
+        iid = self.tree.identify_row(event.y)
+        item = next((it for it in self.items if it["iid"] == iid), None)
+        if item and item.get("error"):
+            messagebox.showerror("Ошибка yt-dlp", item["error"])
+
     # --- download engine --------------------------------------------
     def start_download(self) -> None:
         if self.downloading:
@@ -189,7 +200,7 @@ class SaveTube:
                 done += 1
             else:
                 item["status"] = "error"
-                self.root.after(0, self._set_status, item, "❌ ошибка")
+                self.root.after(0, self._set_status, item, "❌ ошибка · 2× клик")
         self.root.after(0, self._finish, done, len(pending))
 
     def _download_one(self, item: dict, folder: str, quality: str) -> bool:
@@ -210,7 +221,9 @@ class SaveTube:
                             "yt-dlp не найден. Переустанови (см. README).")
             return False
 
+        tail = deque(maxlen=25)  # keep last lines to explain a failure
         for line in proc.stdout:  # live progress from yt-dlp
+            tail.append(line.rstrip())
             m = PROGRESS_RE.search(line)
             if m:
                 label = f"⬇ {m.group(1)}%"
@@ -219,7 +232,22 @@ class SaveTube:
                     label += f" · {spd.group(1).replace(' ', '')}"
                 self.root.after(0, self._set_status, item, label)
         proc.wait()
-        return proc.returncode == 0
+        if proc.returncode != 0:
+            self._record_error(item, tail)
+            return False
+        return True
+
+    def _record_error(self, item: dict, tail) -> None:
+        # ERROR lines first (the real reason), then the raw tail as fallback.
+        errs = [ln for ln in tail if "ERROR" in ln or "error" in ln]
+        reason = "\n".join(errs) if errs else "\n".join(tail)
+        item["error"] = f"{item['url']}\n\n{reason}"
+        try:
+            ERROR_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with ERROR_LOG.open("a") as f:
+                f.write(item["error"] + "\n" + "=" * 60 + "\n")
+        except Exception:
+            pass
 
     def _finish(self, done: int, total: int) -> None:
         self.downloading = False
