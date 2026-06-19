@@ -99,7 +99,8 @@ class SaveTube:
         frame = ttk.Frame(self.root)
         frame.pack(fill="x", padx=10, pady=4)
 
-        self.quality = tk.StringVar(value=self.cfg.get("quality", "video"))
+        # Always start on video so a one-off mp3 run never silently sticks.
+        self.quality = tk.StringVar(value="video")
         ttk.Label(frame, text="Формат:").pack(side="left")
         ttk.Radiobutton(frame, text="Видео mp4", value="video",
                         variable=self.quality).pack(side="left", padx=(6, 0))
@@ -202,8 +203,7 @@ class SaveTube:
             messagebox.showinfo("SaveTube", "Очередь пуста.")
             return
 
-        # Persist choices for next launch.
-        self.cfg["quality"] = self.quality.get()
+        # Persist folder only; quality always resets to video on launch.
         self.cfg["folder"] = self.folder.get()
         save_config(self.cfg)
 
