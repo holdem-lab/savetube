@@ -7,10 +7,21 @@ A broken link is marked failed and skipped; the queue keeps going.
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 from collections import deque
 from pathlib import Path
+
+# GUI apps launched from Finder inherit a minimal PATH without Homebrew, so
+# yt-dlp/ffmpeg (in /opt/homebrew/bin or /usr/local/bin) would be invisible.
+# Without ffmpeg, yt-dlp can't merge video+audio → only the audio survives.
+for _d in ("/opt/homebrew/bin", "/usr/local/bin"):
+    if _d not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+
+YT_DLP = shutil.which("yt-dlp") or "yt-dlp"
+FFMPEG = shutil.which("ffmpeg")  # absolute path or None
 
 ERROR_LOG = Path.home() / ".savetube" / "last_error.log"
 # Max video height per label; None = best available.
@@ -56,6 +67,12 @@ class SaveTube:
         self._build_options()
         self._build_queue()
         self._build_controls()
+
+        if not FFMPEG:  # video+audio merge and mp3 extraction both need it
+            messagebox.showwarning(
+                "SaveTube",
+                "ffmpeg не найден — видео может скачаться без звука, mp3 не "
+                "сработает.\nУстанови: brew install ffmpeg")
 
     # --- UI sections -------------------------------------------------
     def _build_input(self) -> None:
@@ -245,7 +262,9 @@ class SaveTube:
         # [id] guarantees a unique ASCII name even if the title strips to
         # nothing; --restrict-filenames keeps names ASCII-only / no specials.
         out_tmpl = os.path.join(folder, "%(title)s_[%(id)s].%(ext)s")
-        cmd = ["yt-dlp", "--newline", "--restrict-filenames", "-o", out_tmpl]
+        cmd = [YT_DLP, "--newline", "--restrict-filenames", "-o", out_tmpl]
+        if FFMPEG:  # let yt-dlp merge even when PATH is bare (Finder launch)
+            cmd += ["--ffmpeg-location", FFMPEG]
         if quality == "audio":
             cmd += ["-x", "--audio-format", "mp3"]
         elif height:  # cap to chosen resolution, fall back if not available
