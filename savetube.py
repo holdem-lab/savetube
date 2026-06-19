@@ -62,9 +62,38 @@ class SaveTube:
 
         self.input = tk.Text(frame, height=4, wrap="none")
         self.input.pack(fill="x", padx=8, pady=8)
+        self._enable_clipboard(self.input)
 
         ttk.Button(frame, text="＋ Добавить в очередь",
                    command=self.add_to_queue).pack(anchor="e", padx=8, pady=(0, 8))
+
+    def _enable_clipboard(self, widget: tk.Text) -> None:
+        # Tk on macOS binds Cmd+C/V/X to Latin keysyms, so a Russian layout
+        # breaks paste. Bind by physical mac keycode (layout-independent) and
+        # add a right-click menu as a reliable fallback.
+        def on_cmd(event):
+            actions = {9: "<<Paste>>", 8: "<<Copy>>", 7: "<<Cut>>"}
+            virtual = actions.get(event.keycode)
+            if virtual:
+                event.widget.event_generate(virtual)
+                return "break"
+            if event.keycode == 0:  # 'a' — select all
+                event.widget.tag_add("sel", "1.0", "end")
+                return "break"
+        widget.bind("<Command-KeyPress>", on_cmd)
+
+        menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="Вставить",
+                         command=lambda: widget.event_generate("<<Paste>>"))
+        menu.add_command(label="Копировать",
+                         command=lambda: widget.event_generate("<<Copy>>"))
+        menu.add_command(label="Вырезать",
+                         command=lambda: widget.event_generate("<<Cut>>"))
+
+        def popup(event):
+            menu.tk_popup(event.x_root, event.y_root)
+        widget.bind("<Button-2>", popup)      # mac right-click
+        widget.bind("<Control-Button-1>", popup)
 
     def _build_options(self) -> None:
         frame = ttk.Frame(self.root)
