@@ -259,10 +259,11 @@ class SaveTube:
 
     def _download_one(self, item: dict, folder: str, quality: str,
                       height: int | None = None) -> bool:
-        # [id] guarantees a unique ASCII name even if the title strips to
-        # nothing; --restrict-filenames keeps names ASCII-only / no specials.
+        # Keep readable (incl. Cyrillic) names — macOS handles Unicode fine.
+        # [id] keeps names unique; yt-dlp sanitizes illegal chars like "/"
+        # on its own, so no --restrict-filenames (it stripped Cyrillic to "").
         out_tmpl = os.path.join(folder, "%(title)s_[%(id)s].%(ext)s")
-        cmd = [YT_DLP, "--newline", "--restrict-filenames", "-o", out_tmpl]
+        cmd = [YT_DLP, "--newline", "-o", out_tmpl]
         if FFMPEG:  # let yt-dlp merge even when PATH is bare (Finder launch)
             cmd += ["--ffmpeg-location", FFMPEG]
         if quality == "audio":
