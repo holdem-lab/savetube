@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 
 CONFIG_PATH = Path.home() / ".savetube" / "config.json"
 PROGRESS_RE = re.compile(r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%")
+SPEED_RE = re.compile(r"\bat\s+([0-9.]+\s?[KMG]?i?B/s)")
 
 
 def load_config() -> dict:
@@ -212,7 +213,11 @@ class SaveTube:
         for line in proc.stdout:  # live progress from yt-dlp
             m = PROGRESS_RE.search(line)
             if m:
-                self.root.after(0, self._set_status, item, f"⬇ {m.group(1)}%")
+                label = f"⬇ {m.group(1)}%"
+                spd = SPEED_RE.search(line)
+                if spd:  # speed missing on some early lines — show when present
+                    label += f" · {spd.group(1).replace(' ', '')}"
+                self.root.after(0, self._set_status, item, label)
         proc.wait()
         return proc.returncode == 0
 
